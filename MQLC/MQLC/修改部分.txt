@@ -1,0 +1,31 @@
+1、highway_env/highway_env/envs/common/observation.py
+188 修改x范围，为了归一化
+
+2、rl-agents\scripts\experiments.py
+整个文件做修改，由命令行传参形式转为可debug的写入参数形式
+
+3、rl_agents\rl_agents\agents\deep_q_network\abstract.py
+164 act函数，修改为由三个Q网络加权加和的形式
+并顺着该文件修改了调用神经网络的部分
+
+4、rl_agents\rl_agents\agents\common\models.py
+定义用于Qother的GCN与用于Qglobal的MLP，所有网络都是输出对于离散动作的估计
+值得注意的是需要同时写更新以及测试阶段，两个阶段的输入并不相同
+456 size model config函数这里定义了加入网络的输入输出
+
+5、rl_agents\rl_agents\agents\deep_q_network\pytorch.py
+定义更新、网络等
+
+6、highway_env\envs\highway_env.py
+100 返回三个智能体奖励的集合，更新时每个共享参数都使用各自的奖励更新
+总奖励也使用三个智能体加和奖励进行评定
+
+7、rl-agents\rl_agents\trainer\evaluation.py
+修改了奖励返回的机制
+80 注释掉以可以运行
+
+8、F:\Anaconda\Lib\site-packages\rl_agents-1.0.dev0-py3.7.egg!\rl_agents\agents\deep_q_network\abstract.py
+30 更新学习率
+
+9、修改智能体数量、改比例
+改F:\Anaconda\Lib\site-packages\highway_env-1.0.dev0-py3.7.egg!\highway_env\envs\common\observation.py 266关于预测的定义 换轨迹预测模型
