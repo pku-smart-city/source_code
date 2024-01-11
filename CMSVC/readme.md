@@ -1,0 +1,2 @@
+## code reference
+the CMSVC used code from Zhang D, Shi L, Leung S C H, et al. A priority heuristic for the guillotine rectangular packing problem[J]. Information Processing Letters, 2016, 116(1): 15-21.
