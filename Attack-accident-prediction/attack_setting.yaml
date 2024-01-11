@@ -1,0 +1,47 @@
+#主干网络
+backbone: Gsnet
+
+#数据集
+dataset: NYC
+batchsize: 32
+
+#节点选择方法node_map
+for_random: 1
+num_nodes: 400
+K: [10,20,30,40]
+step_size: 0.1
+epsilon: 0.5
+
+#pgd,fgsm
+test_attack_nodes: 0.5
+select_node: [Centrality,Degree,pagerank,random,TDNS]
+#[Centrality,Degree,pagerank,random,saliency_loss_mse]
+#none,sum_yi_loss
+#[Centrality,Degree,pagerank,top_history,sum_yi_loss_test]
+ack_num_steps: 5
+ack_step_size: 0.1
+ack_epsilon: 0.5
+
+#攻击方法
+attacker: white_attacker
+#是否取整
+att_round: 1
+Random_noise: 1
+attack_method: [min_impr,pgd_impr]
+#[min_impr,pgd_impr,random_impr,rand_attack]
+
+#扰动幅度
+test_epsilon: 0.5
+num_timesteps: 1
+
+#组合攻击,0不变
+days: 0  #max:7
+hours: 0  #max:24
+weather: 0  #max:5
+
+
+#结果储存位置
+result_dir: ./logdata
+model_dir: ./logdata
+#日志配置
+log_interval: 2
