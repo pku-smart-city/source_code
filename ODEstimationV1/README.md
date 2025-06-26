@@ -64,7 +64,7 @@ python main.py --infer_type testing
 
 ### 4. 实时推理
 
-模型训练完成后可执行实时推理
+模型训练完成后即可执行实时推理
 
 python main.py --infer_type realtime
 
