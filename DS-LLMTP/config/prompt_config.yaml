@@ -1,0 +1,4 @@
+prompt:
+  regions_to_log: [1, 100, 200, 240]
+  time_format: "half an hour"
+  output_path: "./logs/prompt_log/"
