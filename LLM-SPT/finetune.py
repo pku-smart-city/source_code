@@ -8,17 +8,18 @@ import os
 import yaml
 from util import *
 from scipy.sparse import issparse
+from transformers import AutoTokenizer
 import random
 from model import ST_LLM, PromptNetwork
 from ranger21 import Ranger
 from datetime import datetime, timedelta
-from prompt_generator_s import generate_prompt
-from transformers import AutoTokenizer
+from prompt_generator_t import generate_prompt
 
-
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+os.environ['CUDA_LAUNCH_BLOCKING'] = '0'
 os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:21'
 
-# Argument parser setup
+# Parse command line arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--device", type=str, default="cuda:2", help="Device to use for training")
 parser.add_argument("--data", nargs="+", type=str, default=["CHIbike_drop"], help="Data path")
@@ -29,24 +30,31 @@ parser.add_argument("--input_len", type=int, default=12, help="Input length")
 parser.add_argument("--output_len", type=int, default=12, help="Output length")
 parser.add_argument("--batch_size", type=int, default=16, help="Batch size")
 parser.add_argument("--lrate", type=float, default=1e-3, help="Learning rate")
-parser.add_argument("--U", type=int, default=2, help="Unfrozen attention layer")
-parser.add_argument("--epochs", type=int, default=15, help="Number of training epochs")
-parser.add_argument("--print_every", type=int, default=50, help="Print interval")
+parser.add_argument("--epochs", type=int, default=500, help="Number of training epochs")
 parser.add_argument("--wdecay", type=float, default=0.0001, help="Weight decay rate")
 parser.add_argument("--es_patience", type=int, default=100, help="Early stopping patience")
+parser.add_argument("--sample_days", type=int, default=None,
+                    help="Number of days to sample for training (None for full sample)")
+parser.add_argument("--pretrain_dir", type=str, default=None, help="Path to the pre-trained model directory")
+parser.add_argument("--prune_ratio", type=float, default=0.4, help="Pruning ratio for model")
+parser.add_argument("--freeze_ratio", type=float, default=0.7, help="Freezing ratio for model")
 args = parser.parse_args()
 
+# Generate the log directory name based on arguments
 data_str = "_".join(args.data)
+if args.sample_days is not None:
+    data_str += f"-{args.sample_days}"
 
-# Define save directory with timestamp
-args.save = f'./logs/pretrain-{str(time.strftime("%Y-%m-%d-%H:%M:%S"))}-{data_str}/'
+args.save = f'./logs/finetune-{str(time.strftime("%Y-%m-%d-%H:%M:%S"))}-{data_str}'
 
 
 class trainer:
-    def __init__(self, scaler, lrate, wdecay, config, input_dim, channels, num_nodes, input_len, output_len, U, device):
-        # Initialize tokenizer, main model and prompt network
+    def __init__(self, scaler, lrate, wdecay, config, input_dim, channels, num_nodes, input_len, output_len, device,
+                 prune_ratio, freeze_ratio, pruning_indices):
+        # Initialize tokenizer and models
         self.tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/deepseek-moe-16b-base")
-        self.model = ST_LLM(device, input_dim, channels, num_nodes, input_len, output_len, U)
+        self.model = ST_LLM(device, input_dim, channels, num_nodes, input_len, output_len, prune_ratio, freeze_ratio,
+                            pruning_indices)
         self.prompt_network = PromptNetwork(input_dim, channels, num_nodes, input_len, output_len)
         self.model = self.model.to(device=device, dtype=torch.bfloat16)
         self.prompt_network = self.prompt_network.to(device=device, dtype=torch.bfloat16)
@@ -71,7 +79,7 @@ class trainer:
         if len(self.valid_regions) != len(self.regions_to_log):
             print(f"Warning: Filtered valid region IDs are {self.valid_regions}")
 
-        # Create save directory and open log files
+        # Create log directory and files
         os.makedirs(args.save, exist_ok=True)
         self.log_file = open(self.log_path, 'w')
         self.output_len = output_len
@@ -80,22 +88,23 @@ class trainer:
         self.device = device
 
     def train(self, input, real_val, metadata):
-        """Training step with personalized prompts"""
-        # Prepare input data
+        # Prepare history data for prompt generation
         history_input = input.permute(0, 2, 3, 1)
         history_data = self.scaler.inverse_transform(history_input)
         history_data = history_data.squeeze(-1) if history_data.size(-1) == 1 else history_data[..., 0]
+        torch.cuda.empty_cache()  # 释放缓存
 
+        # Set models to training mode
         self.model.train()
         self.prompt_network.train()
         self.model_optimizer.zero_grad()
         self.prompt_optimizer.zero_grad()
 
-        # Move data to device
+        # Move input to device and get prompted input
         input = input.to(device=self.model.device, dtype=torch.bfloat16)
         prompted_input = self.prompt_network(input)
 
-        # Initial prediction for prompt generation
+        # Get initial predictions for prompt generation
         initial_output = self.model(prompted_input)
         initial_preds = initial_output.squeeze(-1)
         initial_preds = self.scaler.inverse_transform(initial_preds.unsqueeze(-1)).squeeze(-1)
@@ -111,8 +120,7 @@ class trainer:
             self.output_len,
             self.debug_log
         )
-
-        # Tokenize prompts and get final predictions
+        torch.cuda.empty_cache()
         prompt_tokens = self.tokenizer(
             personalized_prompts,
             return_tensors="pt",
@@ -121,6 +129,7 @@ class trainer:
             max_length=512
         ).to(self.device)
 
+        # Get final predictions with prompts and compute loss
         output = self.model(prompted_input, prompt_tokens)
         preds = output.squeeze(-1)
         preds = self.scaler.inverse_transform(preds.unsqueeze(-1)).squeeze(-1)
@@ -128,39 +137,40 @@ class trainer:
         real = real_val[:, :self.output_len, :]
         real = real.permute(0, 2, 1)
 
-        # Compute loss and update model
         loss = self.loss(preds, real, 0.0)
         loss.backward()
+
+        # Gradient clipping and optimization step
         if self.clip is not None:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
             torch.nn.utils.clip_grad_norm_(self.prompt_network.parameters(), self.clip)
         self.model_optimizer.step()
         self.prompt_optimizer.step()
 
-        # Calculate evaluation metrics
+        # Compute evaluation metrics
         mape = util.MAPE_torch(preds, real, 0.0).item()
         rmse = util.RMSE_torch(preds, real, 0.0).item()
         torch.cuda.empty_cache()
         return loss.item(), mape, rmse
 
     def eval(self, input, real_val, metadata):
-        """Evaluation step with personalized prompts (similar to training but without gradient updates)"""
+        # Similar to train method but for evaluation
         history_input = input.permute(0, 2, 3, 1)
         history_data = self.scaler.inverse_transform(history_input)
         history_data = history_data.squeeze(-1) if history_data.size(-1) == 1 else history_data[..., 0]
+        del history_input  # 及时删除中间变量
+        torch.cuda.empty_cache()  # 释放缓存
 
         self.model.eval()
         self.prompt_network.eval()
         input = input.to(device=self.model.device, dtype=torch.bfloat16)
         prompted_input = self.prompt_network(input)
 
-        # Initial prediction for prompt generation
         initial_output = self.model(prompted_input)
         initial_preds = initial_output.squeeze(-1)
         initial_preds = self.scaler.inverse_transform(initial_preds.unsqueeze(-1)).squeeze(-1)
         initial_preds = initial_preds.permute(0, 2, 1)
 
-        # Generate and process prompts
         _, personalized_prompts, _ = generate_prompt(
             initial_preds.detach().cpu(),
             metadata.cpu(),
@@ -170,6 +180,8 @@ class trainer:
             self.output_len,
             self.debug_log
         )
+        torch.cuda.empty_cache()
+
         prompt_tokens = self.tokenizer(
             personalized_prompts,
             return_tensors="pt",
@@ -185,7 +197,6 @@ class trainer:
         real = real_val[:, :self.output_len, :]
         real = real.permute(0, 2, 1)
 
-        # Compute evaluation metrics
         loss = self.loss(preds, real, 0.0)
         mape = util.MAPE_torch(preds, real, 0.0).item()
         rmse = util.RMSE_torch(preds, real, 0.0).item()
@@ -194,7 +205,7 @@ class trainer:
         return loss.item(), mape, rmse
 
     def generate_prompts(self, input, real_val, metadata):
-        """Generate and log personalized prompts"""
+        # Generate prompts for logging and analysis
         self.model.eval()
         self.prompt_network.eval()
         input = input.to(device=self.model.device, dtype=torch.bfloat16)
@@ -205,13 +216,11 @@ class trainer:
 
         prompted_input = self.prompt_network(input)
 
-        # Get initial predictions
         initial_output = self.model(prompted_input)
         initial_preds = initial_output.squeeze(-1)
         initial_preds = self.scaler.inverse_transform(initial_preds.unsqueeze(-1)).squeeze(-1)
         initial_preds = initial_preds.permute(0, 2, 1)
 
-        # Generate prompts
         _, personalized_prompts, _ = generate_prompt(
             initial_preds.detach().cpu(),
             metadata.cpu(),
@@ -221,6 +230,8 @@ class trainer:
             self.output_len,
             self.debug_log
         )
+        torch.cuda.empty_cache()
+
         prompt_tokens = self.tokenizer(
             personalized_prompts,
             return_tensors="pt",
@@ -229,7 +240,6 @@ class trainer:
             max_length=512
         ).to(self.device)
 
-        # Final predictions and logging
         output = self.model(prompted_input, prompt_tokens)
         preds = output.squeeze(-1)
         preds = self.scaler.inverse_transform(preds.unsqueeze(-1)).squeeze(-1)
@@ -261,9 +271,88 @@ class trainer:
                 else:
                     break
 
+    def generate_predictions(self, dataloader, device):
+        """生成测试集预测结果并保存为.npz文件"""
+        self.model.eval()
+        self.prompt_network.eval()
+
+        # 收集所有预测结果
+        all_preds = []
+
+        # 获取测试集迭代器
+        test_iterator = dataloader["test_loader"].get_iterator()
+        total_batches = dataloader["test_loader"].num_batch  # 使用 num_batch 属性获取总批次数
+
+        print(f"开始生成测试集预测，共{total_batches}个批次...")
+
+        for iter, (x, y, m) in enumerate(test_iterator):
+            if iter % 10 == 0:
+                print(f"处理批次: {iter + 1}/{total_batches}")
+
+            testx = torch.Tensor(x).to(device)
+            testx = testx.permute(0, 3, 2, 1).to(torch.bfloat16)
+            metadata_batch = torch.Tensor(m).to(device)
+
+            with torch.no_grad():
+                # 准备历史数据
+                history_input = testx.permute(0, 2, 3, 1)
+                history_data = self.scaler.inverse_transform(history_input)
+                history_data = history_data.squeeze(-1) if history_data.size(-1) == 1 else history_data[..., 0]
+
+                # 获取初始预测
+                prompted_input = self.prompt_network(testx)
+                initial_output = self.model(prompted_input)
+                initial_preds = initial_output.squeeze(-1)
+                initial_preds = self.scaler.inverse_transform(initial_preds.unsqueeze(-1)).squeeze(-1)
+                initial_preds = initial_preds.permute(0, 2, 1)
+
+                # 生成提示
+                _, personalized_prompts, _ = generate_prompt(
+                    initial_preds.detach().cpu(),
+                    metadata_batch.cpu(),
+                    self.valid_regions,
+                    history_data.cpu(),
+                    self.num_nodes,
+                    self.output_len,
+                    None  # 预测时不记录日志
+                )
+
+                # 分词处理
+                prompt_tokens = self.tokenizer(
+                    personalized_prompts,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=512
+                ).to(self.device)
+
+                # 最终预测
+                output = self.model(prompted_input, prompt_tokens)
+                preds = output.squeeze(-1)
+                preds = self.scaler.inverse_transform(preds.unsqueeze(-1)).squeeze(-1)
+
+                # 调整维度: (batch, nodes, seq) -> (batch, seq, nodes, 1)
+                preds = preds.permute(0, 2, 1).unsqueeze(-1)
+                # all_preds.append(preds.cpu().numpy())
+                all_preds.append(preds.float().cpu().numpy())
+
+                # 及时释放内存
+                torch.cuda.empty_cache()
+
+        # 合并所有预测结果
+        full_preds = np.concatenate(all_preds, axis=0)
+        print(f"预测完成! 最终形状: {full_preds.shape}")
+
+        # 保存为.npz文件
+        save_path = os.path.join(args.save, "test_predictions.npz")
+        np.savez_compressed(save_path, predictions=full_preds)
+        print(f"预测结果已保存至: {save_path}")
+
+        return full_preds
+
 
 def seed_it(seed):
-    """Set random seed for reproducibility"""
+    # Set random seeds for reproducibility
     random.seed(seed)
     os.environ["PYTHONSEED"] = str(seed)
     np.random.seed(seed)
@@ -274,14 +363,34 @@ def seed_it(seed):
     torch.manual_seed(seed)
 
 
+def get_sample_data(data, sample_days):
+    # Sample training data for specified number of days
+    if sample_days is None:
+        return data
+
+    total_time_steps = data["x_train"].shape[0]
+    samples_per_day = 48
+
+    if sample_days not in [1, 3, 7, 30]:
+        raise ValueError("Unsupported sample days value")
+
+    end = min(total_time_steps, samples_per_day * sample_days)
+
+    data["x_train"] = data["x_train"][:end, ...]
+    data["y_train"] = data["y_train"][:end, ...]
+    data["metadata"]["train"] = data["metadata"]["train"][:end, :]
+
+    data["train_loader"] = DataLoader(data["x_train"], data["y_train"], data["metadata"]["train"],
+                                      batch_size=args.batch_size)
+
+    return data
+
+
 def main():
-    """Main training loop"""
-    # Load configuration
+    # Load configuration and set random seed
     config_path = os.path.join("config", "prompt_config.yaml")
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)['prompt']
-
-    # Set random seed
     seed_it(6666)
     folders = args.data
     data = "_".join(folders)
@@ -294,35 +403,32 @@ def main():
 
     device = torch.device(args.device)
     data_paths = [f"{folder}/" for folder in folders]
+
+    # Load and preprocess dataset
     dataloader = util.load_dataset(data_paths, args.batch_size, args.batch_size, args.batch_size)
 
-    # Process metadata
+    # Convert metadata to tensors and sample data if specified
     dataloader["metadata"] = {
         "train": torch.from_numpy(dataloader["metadata"]["train"]),
         "val": torch.from_numpy(dataloader["metadata"]["val"]),
         "test": torch.from_numpy(dataloader["metadata"]["test"])
     }
-
+    dataloader = get_sample_data(dataloader, args.sample_days)
     scaler = dataloader["scaler"]
 
-    # Initialize training variables
-    loss = float("inf")
-    test_log = float("inf")
-    epochs_since_best_mae = 0
-
-    his_loss = []
-    val_time = []
-    train_time = []
-    result = []
-    best_test_metrics = None
-    best_epoch = 0
+    # Initialize trainer and load pretrained model if available
     print(args)
 
-    # Create save directory
-    if not os.path.exists(args.save):
-        os.makedirs(args.save)
+    # 初始化trainer，传入pruning_indices
+    pruning_indices = None
+    if args.pretrain_dir:
+        pruning_indices_path = os.path.join(args.pretrain_dir, "pruning_indices.pt")
+        if os.path.exists(pruning_indices_path):
+            pruning_indices = torch.load(pruning_indices_path, map_location='cpu')
+            print(f"Successfully loaded pruning indices from {pruning_indices_path}")
+        else:
+            print(f"Warning: Pruning indices not found at {pruning_indices_path}")
 
-    # Initialize trainer
     engine = trainer(
         scaler,
         args.lrate,
@@ -333,19 +439,46 @@ def main():
         args.num_nodes,
         args.input_len,
         args.output_len,
-        args.U,
         device,
+        args.prune_ratio,
+        args.freeze_ratio,
+        pruning_indices,
     )
 
-    print("start pretraining...", flush=True)
-    # Training loop
+    # 加载预训练参数
+    if args.pretrain_dir:
+        torch.cuda.empty_cache()  # 预加载前先清空
+        best_model_path = os.path.join(args.pretrain_dir, "best_model.pth")
+        best_prompt_network_path = os.path.join(args.pretrain_dir, "best_prompt_network.pth")
+        if os.path.exists(best_model_path) and os.path.exists(best_prompt_network_path):
+            # 使用CPU加载再转移到GPU
+            model_state_dict = torch.load(best_model_path, map_location='cpu')
+            engine.model.load_state_dict(model_state_dict)
+
+            prompt_state_dict = torch.load(best_prompt_network_path, map_location='cpu')
+            engine.prompt_network.load_state_dict(prompt_state_dict)
+            print(f"Successfully loaded pretrained model with {args.num_nodes} nodes")
+
+    # Training loop with validation and early stopping
+    loss = float("inf")
+    test_log = float("inf")
+    epochs_since_best_mae = 0
+    his_loss = []
+    val_time = []
+    train_time = []
+    result = []
+    best_test_metrics = None
+    best_epoch = 0
+
+    print("start fine-tuning...", flush=True)
     for i in range(1, args.epochs + 1):
+        torch.cuda.empty_cache()  # 每个epoch开始前清空缓存
+        # Training phase
         train_loss = []
         train_mape = []
         train_rmse = []
 
         t1 = time.time()
-        # Training epoch
         for iter, (x, y, m) in enumerate(dataloader["train_loader"].get_iterator()):
             trainx = torch.Tensor(x).to(device)
             trainx = trainx.permute(0, 3, 2, 1).to(torch.bfloat16)
@@ -364,7 +497,7 @@ def main():
         print(log.format(i, (t2 - t1)))
         train_time.append(t2 - t1)
 
-        # Validation epoch
+        # Validation phase
         valid_loss = []
         valid_mape = []
         valid_rmse = []
@@ -388,7 +521,7 @@ def main():
         print(log.format(i, (s2 - s1)))
         val_time.append(s2 - s1)
 
-        # Calculate average metrics
+        # Calculate and log metrics
         mtrain_loss = np.mean(train_loss)
         mtrain_mape = np.mean(train_mape)
         mtrain_rmse = np.mean(train_rmse)
@@ -400,7 +533,6 @@ def main():
         his_loss.append(mvalid_loss)
         print("-----------------------")
 
-        # Log training metrics
         train_m = dict(
             train_loss=mtrain_loss,
             train_rmse=mtrain_rmse,
@@ -422,14 +554,13 @@ def main():
         if mvalid_loss < loss:
             print("### Update tasks appear ###")
             loss = mvalid_loss
-            torch.save(engine.model.state_dict(), args.save + "best_model.pth")
-            torch.save(engine.prompt_network.state_dict(), args.save + "best_prompt_network.pth")
+            best_model_path = os.path.join(args.save, "best_model.pth")
+            best_prompt_network_path = os.path.join(args.save, "best_prompt_network.pth")
+            torch.save(engine.model.state_dict(), best_model_path)
+            torch.save(engine.prompt_network.state_dict(), best_prompt_network_path)
             best_epoch = i
             epochs_since_best_mae = 0
 
-            # Evaluate on test set
-            engine.model.load_state_dict(torch.load(args.save + "best_model.pth"))
-            engine.prompt_network.load_state_dict(torch.load(args.save + "best_prompt_network.pth"))
             outputs = []
             realy = torch.Tensor(dataloader["y_test"][..., 0]).to(device)
             realy = realy.permute(0, 2, 1)
@@ -473,12 +604,13 @@ def main():
                 'test_mae': np.mean(amae),
                 'test_rmse': np.mean(armse),
                 'test_mape': np.mean(amape),
-                'future_2_mae': np.mean(future_amae) if len(future_amae) > 1 else None,
-                'future_2_rmse': np.mean(future_armse) if len(future_armse) > 1 else None,
-                'future_2_mape': np.mean(future_amape) if len(future_amape) > 1 else None,
+                'future_2_mae': future_amae[0] if len(future_amae) > 1 else None,
+                'future_2_rmse': future_armse[0] if len(future_armse) > 1 else None,
+                'future_2_mape': future_amape[0] if len(future_amape) > 1 else None,
             }
             best_test_metrics = test_metrics
 
+            # Log validation and test metrics
             log = "Epoch: {:03d}, Valid Loss: {:.4f} | Test Loss: {:.4f}, epoch:{}"
             print(log.format(i, mvalid_loss, test_metrics['test_mae'], best_epoch), flush=True)
         else:
@@ -498,12 +630,25 @@ def main():
             testy = torch.Tensor(y).to(device).to(torch.bfloat16)
             real_val = testy[:, :, :, 0]
             engine.generate_prompts(testx, real_val, metadata)
+            torch.cuda.empty_cache()  # 每个batch后释放缓存
 
-        # Early stopping
-        if epochs_since_best_mae >= args.es_patience and i >= 20:
+        # Early stopping check
+        if epochs_since_best_mae >= args.es_patience and i >= 200:
             break
 
-    # Print training summary
+    # ====== 新增预测生成部分 ======
+    # 确保使用最佳模型
+    engine.model.load_state_dict(torch.load(os.path.join(args.save, "best_model.pth")))
+    engine.prompt_network.load_state_dict(torch.load(os.path.join(args.save, "best_prompt_network.pth")))
+
+    print("\n" + "=" * 50)
+    print("开始生成最终测试集预测...")
+    print("=" * 50)
+
+    # 生成预测结果
+    engine.generate_predictions(dataloader, device)
+
+    # 打印训练总结
     print("Average Training Time: {:.4f} secs/epoch".format(np.mean(train_time)))
     print("Average Inference Time: {:.4f} secs".format(np.mean(val_time)))
 
