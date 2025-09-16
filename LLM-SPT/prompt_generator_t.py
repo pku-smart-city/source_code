@@ -77,7 +77,7 @@ def generate_prompt(preds, metadata, region_ids, history_data, num_nodes, output
 
         personalized_prompt = [
             "You are a expert that can predict traffic demand.",
-            "Given historical traffic data over 12 time steps, Time steps for 30 minutes interval, Please predict the traffic demand for the next 2 time steps.",
+            "Given historical traffic data over 12 time steps, time steps for 30 minutes interval, please predict the traffic demand for the next 2 time steps.",
             "Mining the spatio-temporal dependence. The temporal dependence considers the 12 historical time steps, and the spatial dependence considers the provided adjacency matrix.",
             "Based on the above information, provide a more accurate traffic demand precision."
         ]
