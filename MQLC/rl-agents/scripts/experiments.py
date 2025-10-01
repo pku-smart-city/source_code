@@ -63,11 +63,8 @@ parser.add_argument('--attack', default=2, type=int)
 
 # sensitive time
 parser.add_argument('--stn', default=2.52, type=int)
-# single_test_dir/home/qiao/he/MQLC/rl-agents/scripts/out/HighwayEnv/DQNAgent/MQLC 0105/checkpoint-10000.tar
 
-# multi_test  /home/qiao/he/MQLC/rl-agents/scripts/out/HighwayEnv/DQNAgent/MQLC 0.8_0105
-# repeat = 11  0-8000+final+best  final is 9000  best is 10000
-parser.add_argument('--recover_from', default='/Users/heshouliang/MQLC/rl-agents/scripts/out/HighwayEnv/DQNAgent/MQLC_0410_random_10', type=str)
+parser.add_argument('--recover_from', default='', type=str)
 
 
 args = parser.parse_args()
@@ -108,7 +105,7 @@ def evaluate(environment_config, agent_config, _):
         else:
 
             # test_doc.dir
-            run_directory = "{}_{}_{}".format('MQLC_0410_attack',
+            run_directory = "{}_{}_{}".format('',
                                               datetime.datetime.now().strftime('%m%d'),
                                               episodes)
             recover = args.recover_from + "/checkpoint-" + str(episodes) + ".tar"
