@@ -1,6 +1,6 @@
 # DWZNet
 
-This code repository is developed based on the code provided by the authors of SFMGTL, corresponding to the paper *"Semantic-fused Multi-granularity Cross-city Traffic Prediction"*. We hereby express our sincere gratitude to the original authors for their support.
+The DWZNet used code from Chen K, Liang Y, Han J, et al. Semantic-fused multi-granularity cross-city traffic prediction[J]. Transportation Research Part C: Emerging Technologies, 2024, 162: 104604.
 
 # Commands
 
