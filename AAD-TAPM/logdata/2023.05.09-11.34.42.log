@@ -1,0 +1,15 @@
+2023-05-09 11:34:42,870 - INFO - Loading config file from 
+2023-05-09 11:34:52,615 - INFO - Loading config file from 
+2023-05-09 11:34:52,620 - INFO - ten_ZINBSC_40_35
+2023-05-09 11:35:33,786 - INFO - Info:  [64/1080 (6%)]	    adv_RMSE: 0.9317 adv_Recall: 28.1787 adv_MAP: 0.1252 adv_RCR: 0.7444 time:5.033
+2023-05-09 11:35:44,047 - INFO - Info:  [128/1080 (12%)]	    adv_RMSE: 0.8686 adv_Recall: 28.4404 adv_MAP: 0.1467 adv_RCR: 0.7396 time:4.986
+2023-05-09 11:43:15,514 - INFO - Loading config file from 
+2023-05-09 11:43:15,521 - INFO - ten_ZINBSC_40_35
+2023-05-09 11:43:57,080 - INFO - Info:  [64/1080 (6%)]	    adv_RMSE: 0.9344 adv_Recall: 27.1478 adv_MAP: 0.1289 adv_RCR: 0.7814 time:4.966
+2023-05-09 11:44:07,458 - INFO - Info:  [128/1080 (12%)]	    adv_RMSE: 0.8670 adv_Recall: 29.8165 adv_MAP: 0.1478 adv_RCR: 0.7407 time:4.940
+2023-05-09 11:44:17,980 - INFO - Info:  [192/1080 (18%)]	    adv_RMSE: 0.8745 adv_Recall: 27.3438 adv_MAP: 0.1362 adv_RCR: 0.7148 time:4.983
+2023-05-09 11:44:28,303 - INFO - Info:  [256/1080 (24%)]	    adv_RMSE: 0.9620 adv_Recall: 32.0652 adv_MAP: 0.1450 adv_RCR: 0.7219 time:4.997
+2023-05-09 11:44:38,530 - INFO - Info:  [320/1080 (29%)]	    adv_RMSE: 0.8531 adv_Recall: 19.5767 adv_MAP: 0.0842 adv_RCR: 0.8198 time:4.951
+2023-05-09 11:44:48,795 - INFO - Info:  [384/1080 (35%)]	    adv_RMSE: 0.8874 adv_Recall: 28.1250 adv_MAP: 0.1234 adv_RCR: 0.7574 time:5.025
+2023-05-09 11:44:59,095 - INFO - Info:  [448/1080 (41%)]	    adv_RMSE: 0.9180 adv_Recall: 28.2443 adv_MAP: 0.1297 adv_RCR: 0.7225 time:5.023
+2023-05-09 11:45:09,405 - INFO - Info:  [512/1080 (47%)]	    adv_RMSE: 0.7969 adv_Recall: 24.7788 adv_MAP: 0.1335 adv_RCR: 0.7585 time:4.969
