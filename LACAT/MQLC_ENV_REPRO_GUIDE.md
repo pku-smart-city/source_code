@@ -59,6 +59,33 @@ MQLC/
 Because `wheelhouse` is large (for example 3.5 GB), do **not** commit it to git history.
 Publish assets in GitHub Releases instead.
 
+### Published release for this project (download here)
+
+The offline bundles for this workflow are published on the fork **MangoSea/source_code**:
+
+- **Release page:** [MQLC offline assets v1](https://github.com/MangoSea/source_code/releases/tag/mqlc-env-assets-v1)
+- **Tag:** `mqlc-env-assets-v1`
+
+**Assets included:** `wheelhouse.tar.gz.part.00`, `wheelhouse.tar.gz.part.01`, `dist_whl.tar.gz`, `RELEASE_SHA256SUMS.txt` (plus GitHub-generated source archives, which you do not need for pip offline install).
+
+**Direct download base URL** (for scripts; replace `<filename>` with an asset name):
+
+`https://github.com/MangoSea/source_code/releases/download/mqlc-env-assets-v1/<filename>`
+
+Example (download all user assets into current directory):
+
+```bash
+TAG=mqlc-env-assets-v1
+BASE=https://github.com/MangoSea/source_code/releases/download/${TAG}
+for f in wheelhouse.tar.gz.part.00 wheelhouse.tar.gz.part.01 dist_whl.tar.gz RELEASE_SHA256SUMS.txt; do
+  wget -c "${BASE}/${f}"
+done
+```
+
+If the fork URL or tag changes in the future, update the link above and the `BASE` URL in your scripts.
+
+---
+
 ### 3.1 Package and split large files
 
 Run in project root:
