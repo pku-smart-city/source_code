@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+.env
+wandb/
+runs/
+output/
+*.pt
+*.pth
+*.ckpt
+*.zip
+*.tar.gz
