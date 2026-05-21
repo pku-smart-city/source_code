@@ -1,0 +1,65 @@
+############################
+# Python
+############################
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.venv/
+env/
+carla_env/
+
+############################
+# OS / IDE
+############################
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+############################
+# Models / checkpoints
+############################
+*.pth
+*.pt
+*.ckpt
+*.npz
+
+############################
+# Large media
+############################
+#*.mp4
+*.avi
+*.mov
+
+############################
+# Generic logs (default ignore)
+############################
+*.log
+*.csv
+
+############################
+# Experiment outputs (strict)
+############################
+experiments/
+src/experiments/
+backups/
+snapshots/
+
+# root-level run leftovers
+src/*log*.csv
+src/*times*.txt
+src/collision*.txt
+
+############################
+# Other generated folders
+############################
+src/_out/
+_out/
+collision_*.txt
+#driving_video.mp4
+
+wm_useful_scripts_bundle/
+wm_useful_scripts_flat/
