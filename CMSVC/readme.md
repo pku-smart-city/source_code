@@ -1,3 +1,15 @@
+# CMSVC
+
+## Paper
+
+**Title:** Leveraging Multiple Source Cities in Selective Transfer Learning for Traffic Prediction With Limited Data
+
+**Published in:** IEEE Transactions on Intelligent Transportation Systems, Vol. 26, No. 10, pp. 15646–15659, October 2025
+
+**DOI:** [10.1109/TITS.2025.3596309](https://doi.org/10.1109/TITS.2025.3596309)
+
+**IEEE Xplore:** [Paper](https://ieeexplore.ieee.org/document/11124468)
+
 ## code reference
 ```command
 The CMSVC used code from Zhang D, Shi L, Leung S C H, et al. A priority heuristic for the guillotine rectangular packing problem[J]. Information Processing Letters, 2016, 116(1): 15-21. At the same time, CMSVC also uses code from the code base https://github.com/KL4805/CrossTReS
