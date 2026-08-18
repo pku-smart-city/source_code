@@ -7,6 +7,14 @@ This repository implements a closed-loop LLM + world-model driving framework:
 - `Imagine`: a world model (WM) performs short-horizon rollout verification.
 - `Act`: the safest candidate is executed via CARLA Traffic Manager (TM), and physical feedback is written back to the next LLM step.
 
+## Paper
+
+**Title:** Reason–Imagine–Act: Closed-Loop LLM Decision Making with World Models for Autonomous Driving
+
+**Accepted by:** 2026 IEEE International Conference on Intelligent Transportation Systems (ITSC 2026)
+
+**arXiv:** [arXiv:2605.24004](https://arxiv.org/abs/2605.24004)
+
 ## Upstream Baseline Reference
 
 - MADA (Multi-alignment-Driving-Agent) official repository: https://github.com/AIR-DISCOVER/Multi-alignment-Driving-Agent
