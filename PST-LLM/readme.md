@@ -1,5 +1,15 @@
 
 # Prompt and Sequential Selection Transfer based Large Language Model for Traffic Prediction with Limited Data
+
+## Paper
+
+**Title:** Prompt and sequential selection transfer based large language model for traffic prediction with limited data
+
+**Published in:** Transportation Research Part E: Logistics and Transportation Review, Vol. 215, Article 105128, November 2026
+
+**DOI:** [10.1016/j.tre.2026.105128](https://doi.org/10.1016/j.tre.2026.105128)
+
+**ScienceDirect:** [Paper](https://www.sciencedirect.com/science/article/pii/S1366554526004667)
 ## Code reference
 ```command
 The PST-LLM used code from Liu C, Yang S, Xu Q, et al. Spatial-temporal large language model for traffic prediction[C]//2024 25th IEEE International Conference on Mobile Data Management (MDM). IEEE, 2024: 31-40. At the same time, PST-LLM also uses code from the code base https://github.com/ChenxiLiu-HNU/ST-LLM.
