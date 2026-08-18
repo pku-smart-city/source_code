@@ -1,3 +1,6 @@
+## Paper
+**Title:**A Two-Stage Next POI Prediction Framework Based on Hypergraph Aggregation and Global Prototype-Enhanced LLM
+
 ### 1. Prerequisites & Environment Setup
 
 ```bash
